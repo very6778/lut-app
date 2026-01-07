@@ -1,14 +1,19 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { LUTPreset, LUTState } from '../types';
 import { DEFAULT_LUT_STATE, BUILTIN_LUTS } from '../types';
 
+export interface LUTData {
+    data: Float32Array;
+    size: number;
+}
+
 export function useLUT() {
     const [state, setState] = useState<LUTState>(DEFAULT_LUT_STATE);
-    const [lutData, setLutData] = useState<Float32Array | null>(null);
+    const [lutData, setLutData] = useState<LUTData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     // Parse .cube file content
-    const parseCubeFile = useCallback((content: string): Float32Array | null => {
+    const parseCubeFile = useCallback((content: string): LUTData | null => {
         try {
             const lines = content.split('\n');
             const data: number[] = [];
@@ -36,11 +41,24 @@ export function useLUT() {
                 }
             }
 
-            if (data.length === 0) return null;
+            if (data.length === 0 || size === 0) return null;
 
-            return new Float32Array(data);
-        } catch {
-            console.error('Failed to parse cube file');
+            // Convert RGB to RGBA for WebGL 2 compatibility
+            // WebGL 2 doesn't properly support RGB format for 3D textures
+            const rgbaData = new Float32Array((data.length / 3) * 4);
+            for (let i = 0, j = 0; i < data.length; i += 3, j += 4) {
+                rgbaData[j] = data[i];       // R
+                rgbaData[j + 1] = data[i + 1]; // G
+                rgbaData[j + 2] = data[i + 2]; // B
+                rgbaData[j + 3] = 1.0;         // A
+            }
+
+            return {
+                data: rgbaData,
+                size
+            };
+        } catch (e) {
+            console.error('Failed to parse cube file', e);
             return null;
         }
     }, []);

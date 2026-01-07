@@ -16,6 +16,7 @@ export function useVideoProcessor() {
     const [video, setVideo] = useState<VideoState>(initialVideoState);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
     const videoRef = useRef<HTMLVideoElement | null>(null);
 
     // Create video element once
@@ -26,10 +27,28 @@ export function useVideoProcessor() {
             videoRef.current.muted = false;
             videoRef.current.loop = true;
         }
+
+        const video = videoRef.current;
+
+        // Listen to play/pause events to sync state
+        const handlePlay = () => setIsPlaying(true);
+        const handlePause = () => setIsPlaying(false);
+        const handleEnded = () => setIsPlaying(false);
+
+        video.addEventListener('play', handlePlay);
+        video.addEventListener('pause', handlePause);
+        video.addEventListener('ended', handleEnded);
+
         return () => {
+            video.removeEventListener('play', handlePlay);
+            video.removeEventListener('pause', handlePause);
+            video.removeEventListener('ended', handleEnded);
+
+            // Note: We don't nullify videoRef.current here to persist the element across re-renders
+            // But we pause it on unmount
             if (videoRef.current) {
                 videoRef.current.pause();
-                videoRef.current.src = '';
+                // videoRef.current.src = ''; // Keeping src might be better for strict mode unless we really want to unload
             }
         };
     }, []);
@@ -85,6 +104,7 @@ export function useVideoProcessor() {
         }
         setVideo(initialVideoState);
         setError(null);
+        setIsPlaying(false);
         if (videoRef.current) {
             videoRef.current.pause();
             videoRef.current.src = '';
@@ -99,6 +119,16 @@ export function useVideoProcessor() {
         videoRef.current?.pause();
     }, []);
 
+    const playPause = useCallback(() => {
+        if (videoRef.current) {
+            if (videoRef.current.paused) {
+                videoRef.current.play();
+            } else {
+                videoRef.current.pause();
+            }
+        }
+    }, []);
+
     const seek = useCallback((time: number) => {
         if (videoRef.current) {
             videoRef.current.currentTime = time;
@@ -109,16 +139,23 @@ export function useVideoProcessor() {
         return videoRef.current?.currentTime || 0;
     }, []);
 
+    const setFps = useCallback((fps: number) => {
+        setVideo(prev => ({ ...prev, fps }));
+    }, []);
+
     return {
         video,
         videoElement: videoRef.current,
         isLoading,
         error,
+        isPlaying,
         loadVideo,
         clearVideo,
         play,
         pause,
+        playPause,
         seek,
         getCurrentTime,
+        setFps,
     };
 }

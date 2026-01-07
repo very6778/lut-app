@@ -68,9 +68,9 @@ export async function validateVideo(
     file: File
 ): Promise<{ valid: boolean; error?: string; duration?: number }> {
     // Check file type
-    const validTypes = ['video/mp4', 'video/webm'];
+    const validTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
     if (!validTypes.includes(file.type)) {
-        return { valid: false, error: 'Unsupported format. Use MP4 or WebM.' };
+        return { valid: false, error: 'Unsupported format. Use MP4, MOV or WebM.' };
     }
 
     // Check duration

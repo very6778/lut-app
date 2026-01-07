@@ -66,7 +66,7 @@ export function VideoUploader({ onVideoSelect, isLoading, error }: VideoUploader
             <input
                 ref={inputRef}
                 type="file"
-                accept="video/mp4,video/webm"
+                accept="video/mp4,video/webm,video/quicktime"
                 className="hidden"
                 onChange={handleFileSelect}
             />
@@ -90,7 +90,7 @@ export function VideoUploader({ onVideoSelect, isLoading, error }: VideoUploader
 
                     <div className="flex items-center gap-2 text-sm text-muted">
                         <Upload className="w-4 h-4" />
-                        <span>Supports MP4, WebM • Up to 3 minutes</span>
+                        <span>Supports MP4, MOV, WebM • Up to 3 minutes</span>
                     </div>
 
                     {error && (

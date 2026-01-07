@@ -14,7 +14,9 @@ export interface ColorSettings {
     exposure: number;      // -2 to +2
     contrast: number;      // -100 to +100
     saturation: number;    // -100 to +100
+    vibrance: number;      // -100 to +100
     temperature: number;   // -100 to +100
+    tint: number;          // -100 to +100 (green to magenta)
     highlights: number;    // -100 to +100
     shadows: number;       // -100 to +100
 }
@@ -23,7 +25,9 @@ export const DEFAULT_COLOR_SETTINGS: ColorSettings = {
     exposure: 0,
     contrast: 0,
     saturation: 0,
+    vibrance: 0,
     temperature: 0,
+    tint: 0,
     highlights: 0,
     shadows: 0,
 };
@@ -63,6 +67,9 @@ export const BITRATE_PRESETS: Record<ExportQuality, number> = {
     custom: 15_000_000, // Default for custom
 };
 
+export const FPS_OPTIONS = [24, 25, 30, 60] as const;
+export type ExportFPS = typeof FPS_OPTIONS[number];
+
 export interface ExportProgress {
     status: 'idle' | 'encoding' | 'muxing' | 'complete' | 'error';
     currentFrame: number;
@@ -82,10 +89,7 @@ export interface AppState {
 
 // Built-in LUT Presets
 export const BUILTIN_LUTS: LUTPreset[] = [
-    { id: 'cinematic', name: 'Cinematic', path: '/luts/cinematic.cube' },
-    { id: 'vintage', name: 'Vintage', path: '/luts/vintage.cube' },
-    { id: 'natural', name: 'Natural', path: '/luts/natural.cube' },
-    { id: 'bw-contrast', name: 'B&W', path: '/luts/bw-contrast.cube' },
-    { id: 'muted', name: 'Muted', path: '/luts/muted.cube' },
-    { id: 'vibrant', name: 'Vibrant', path: '/luts/vibrant.cube' },
+    { id: 'apple-log-rec709', name: 'Apple Log → Rec709', path: '/luts/Conversion LUT - Apple Log to Rec709.cube' },
+    { id: 'apple-log-high-contrast', name: 'Apple Log → High Contrast', path: '/luts/Apple Log - High Contrast.cube' },
+    { id: 'apple-log-cn2', name: 'Apple Log → CN2 (Soft)', path: '/luts/Apple Log - CN2.cube' },
 ];
