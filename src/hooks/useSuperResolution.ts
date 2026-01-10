@@ -26,7 +26,8 @@ export function useSuperResolution() {
     const scaleFactorRef = useRef<number>(2);
 
     // Load the ONNX model
-    const loadModel = useCallback(async (modelPath: string = '/models/super_resolution.onnx') => {
+    // Using a reliable remote URL to avoid large file issues in repo
+    const loadModel = useCallback(async (modelPath: string = 'https://huggingface.co/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x2.onnx') => {
         try {
             setState(prev => ({ ...prev, isProcessing: true, error: null }));
 
