@@ -119,8 +119,7 @@ export function useExport() {
             colorSettings: ColorSettings,
             lutData: LUTData | null,
             lutIntensity: number,
-            fps: number = 30,
-            upscale?: { enabled: boolean; fn: (frame: ImageData) => Promise<ImageData | null> }
+            fps: number = 30
         ) => {
             if (!videoElement) {
                 console.error('Video element not available');
@@ -132,14 +131,8 @@ export function useExport() {
 
             try {
                 const bitrate = settings.bitrate || 10_000_000;
-                // Upscale Logic: Determine target dimensions
-                const sourceWidth = videoElement.videoWidth;
-                const sourceHeight = videoElement.videoHeight;
-                const isUpscale = upscale?.enabled && upscale.fn;
-
-                const width = isUpscale ? sourceWidth * 2 : sourceWidth;
-                const height = isUpscale ? sourceHeight * 2 : sourceHeight;
-
+                const width = videoElement.videoWidth;
+                const height = videoElement.videoHeight;
                 const duration = videoElement.duration;
                 const totalFrames = Math.ceil(duration * fps);
 
@@ -151,7 +144,7 @@ export function useExport() {
                     status: 'encoding',
                     currentFrame: 0,
                     totalFrames,
-                    estimatedTimeRemaining: duration * (isUpscale ? 4 : 0.5), // Estimate slower for upscale
+                    estimatedTimeRemaining: duration * 0.5,
                 });
 
                 // Create muxer
@@ -165,8 +158,8 @@ export function useExport() {
                     fastStart: 'in-memory',
                 });
 
-                // Create encoder with appropriate level for resolution
-                const codecLevel = (width * height) > 2097152 ? '640034' : '640028';
+                // Create encoder with appropriate level
+                const codecLevel = (width * height) > 2097152 ? '640034' : '640028'; // Level 5.2 or 5.1
 
                 let encodedFrames = 0;
                 const encoder = new VideoEncoder({
@@ -183,7 +176,7 @@ export function useExport() {
                     codec: `avc1.${codecLevel}`,
                     width,
                     height,
-                    bitrate: isUpscale ? bitrate * 2 : bitrate, // Increase bitrate for 4K
+                    bitrate,
                     framerate: fps,
                     hardwareAcceleration: 'prefer-hardware',
                     latencyMode: 'quality',
@@ -193,11 +186,6 @@ export function useExport() {
                 const canvas = new OffscreenCanvas(width, height);
                 const ctx = canvas.getContext('2d');
                 if (!ctx) throw new Error('Could not get canvas context');
-
-                // Helper canvas for capturing original frame safely
-                const sourceCanvas = new OffscreenCanvas(sourceWidth, sourceHeight);
-                const sourceCtx = sourceCanvas.getContext('2d');
-                if (!sourceCtx) throw new Error('Could not get source canvas contents');
 
                 // HIGH-SPEED APPROACH: Use playback + requestVideoFrameCallback
                 // This captures frames in real-time as video plays
@@ -215,7 +203,7 @@ export function useExport() {
                 // Frame callback for high-speed capture
                 const finishExport = async () => {
                     videoElement.pause();
-                    if (!isUpscale) videoElement.playbackRate = 1.0;
+                    videoElement.playbackRate = 1.0;
 
                     await encoder.flush();
                     encoder.close();
@@ -228,7 +216,7 @@ export function useExport() {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `graded-video-${isUpscale ? 'upscaled-' : ''}${Date.now()}.mp4`;
+                    a.download = `graded-video-${Date.now()}.mp4`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
@@ -247,143 +235,71 @@ export function useExport() {
                     exportResolve();
                 };
 
-                // STRATEGY SPLIT
+                let exportFinished = false;
 
-                if (isUpscale) {
-                    // SLOW/SAFE PATH: Frame-by-frame Seek
-                    // Necessary for AI inference time
-                    const processFrame = async () => {
-                        for (let i = 0; i < totalFrames; i++) {
-                            if (signal.aborted) return;
+                const handleFinish = async () => {
+                    if (exportFinished) return;
+                    exportFinished = true;
+                    await finishExport();
+                };
 
-                            const currentTime = i / fps;
-                            videoElement.currentTime = currentTime;
+                const captureFrame = (now: number, metadata: VideoFrameCallbackMetadata) => {
+                    if (signal.aborted || exportFinished) return;
 
-                            await new Promise<void>(resolve => {
-                                const onSeek = () => {
-                                    videoElement.removeEventListener('seeked', onSeek);
-                                    resolve();
-                                };
-                                videoElement.addEventListener('seeked', onSeek);
-                            });
+                    if (metadata.mediaTime >= duration - 0.1 || videoElement.ended) {
+                        handleFinish();
+                        return;
+                    }
 
-                            // 1. Draw original frame
-                            sourceCtx.drawImage(videoElement, 0, 0, sourceWidth, sourceHeight);
-                            let imageData = sourceCtx.getImageData(0, 0, sourceWidth, sourceHeight);
+                    if (now - lastFrameTime >= frameInterval * 0.8) {
+                        lastFrameTime = now;
 
-                            // 2. AI Upscale
-                            let processedData = await upscale!.fn(imageData);
+                        // Draw video frame
+                        ctx.drawImage(videoElement, 0, 0, width, height);
 
-                            if (!processedData) {
-                                // Fallback: scale with canvas
-                                ctx.drawImage(videoElement, 0, 0, width, height);
-                                processedData = ctx.getImageData(0, 0, width, height);
-                            }
-
-                            // 3. Apply Color Grading
-                            processedData = applyColorGrading(processedData, colorSettings);
-
-                            // 4. Apply LUT (if available)
-                            if (lutData) {
-                                processedData = applyLUT(processedData, lutData, lutIntensity);
-                            }
-
-                            // 5. Draw processed frame to canvas
-                            ctx.putImageData(processedData, 0, 0);
-
-                            // 4. Encode
-                            const frame = new VideoFrame(canvas, {
-                                timestamp: i * 1_000_000 / fps, // consistent timestamp
-                                duration: 1_000_000 / fps,
-                            });
-
-                            const isKeyFrame = i % (fps * 2) === 0;
-                            encoder.encode(frame, { keyFrame: isKeyFrame });
-                            frame.close();
-
-                            frameCount++;
-
-                            setProgress({
-                                status: 'encoding',
-                                currentFrame: i + 1,
-                                totalFrames,
-                                estimatedTimeRemaining: (totalFrames - i) * ((performance.now() - startTime) / (i + 1) / 1000),
-                            });
+                        // Apply color grading and LUT
+                        let frameData = ctx.getImageData(0, 0, width, height);
+                        frameData = applyColorGrading(frameData, colorSettings);
+                        if (lutData) {
+                            frameData = applyLUT(frameData, lutData, lutIntensity);
                         }
+                        ctx.putImageData(frameData, 0, 0);
 
-                        await finishExport();
-                    };
+                        const frame = new VideoFrame(canvas, {
+                            timestamp: Math.round(metadata.mediaTime * 1_000_000),
+                            duration: Math.round(frameInterval * 1000),
+                        });
 
-                    processFrame();
+                        const isKeyFrame = frameCount % (fps * 2) === 0;
+                        encoder.encode(frame, { keyFrame: isKeyFrame });
+                        frame.close();
 
-                } else {
-                    // FAST PATH: Playback Capture (Existing logic)
-                    let exportFinished = false;
+                        frameCount++;
 
-                    const handleFinish = async () => {
-                        if (exportFinished) return;
-                        exportFinished = true;
-                        await finishExport();
-                    };
-
-                    const captureFrame = (now: number, metadata: VideoFrameCallbackMetadata) => {
-                        if (signal.aborted || exportFinished) return;
-
-                        if (metadata.mediaTime >= duration - 0.1 || videoElement.ended) {
-                            handleFinish();
-                            return;
-                        }
-
-                        if (now - lastFrameTime >= frameInterval * 0.8) {
-                            lastFrameTime = now;
-
-                            // Draw video frame
-                            ctx.drawImage(videoElement, 0, 0, width, height);
-
-                            // Apply color grading and LUT
-                            let frameData = ctx.getImageData(0, 0, width, height);
-                            frameData = applyColorGrading(frameData, colorSettings);
-                            if (lutData) {
-                                frameData = applyLUT(frameData, lutData, lutIntensity);
-                            }
-                            ctx.putImageData(frameData, 0, 0);
-
-                            const frame = new VideoFrame(canvas, {
-                                timestamp: Math.round(metadata.mediaTime * 1_000_000),
-                                duration: Math.round(frameInterval * 1000),
-                            });
-
-                            const isKeyFrame = frameCount % (fps * 2) === 0;
-                            encoder.encode(frame, { keyFrame: isKeyFrame });
-                            frame.close();
-
-                            frameCount++;
-
-                            setProgress({
-                                status: 'encoding',
-                                currentFrame: frameCount,
-                                totalFrames,
-                                estimatedTimeRemaining: Math.max(0, duration - metadata.mediaTime),
-                            });
-                        }
-
-                        videoElement.requestVideoFrameCallback(captureFrame);
-                    };
-
-                    videoElement.currentTime = 0;
-                    videoElement.playbackRate = 1.3;
-
-                    await new Promise<void>(resolve => {
-                        const onSeeked = () => {
-                            videoElement.removeEventListener('seeked', onSeeked);
-                            resolve();
-                        };
-                        videoElement.addEventListener('seeked', onSeeked);
-                    });
+                        setProgress({
+                            status: 'encoding',
+                            currentFrame: frameCount,
+                            totalFrames,
+                            estimatedTimeRemaining: Math.max(0, duration - metadata.mediaTime),
+                        });
+                    }
 
                     videoElement.requestVideoFrameCallback(captureFrame);
-                    videoElement.play();
-                }
+                };
+
+                videoElement.currentTime = 0;
+                videoElement.playbackRate = 1.3;
+
+                await new Promise<void>(resolve => {
+                    const onSeeked = () => {
+                        videoElement.removeEventListener('seeked', onSeeked);
+                        resolve();
+                    };
+                    videoElement.addEventListener('seeked', onSeeked);
+                });
+
+                videoElement.requestVideoFrameCallback(captureFrame);
+                videoElement.play();
 
                 await exportPromise;
 

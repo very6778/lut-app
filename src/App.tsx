@@ -14,8 +14,8 @@ import { Vectorscope } from './components/scopes/Vectorscope';
 import { useVideoProcessor } from './hooks/useVideoProcessor';
 import { useColorGrading } from './hooks/useColorGrading';
 import { useDualLUT } from './hooks/useDualLUT';
-import { useSuperResolution } from './hooks/useSuperResolution';
 import { ExportModal } from './components/ExportModal';
+import { PhotoUpscaler } from './components/PhotoUpscaler';
 
 // Define available tool types matching ToolRail
 type ToolType = 'video' | 'lut' | 'adjust' | 'scope' | 'magic';
@@ -24,7 +24,6 @@ function App() {
   const [toolbarView, setToolbarView] = useState<ToolType>('adjust');
   const [showExportModal, setShowExportModal] = useState(false);
   const [activeScope, setActiveScope] = useState<'histogram' | 'vectorscope'>('vectorscope');
-  const [upscaleEnabled, setUpscaleEnabled] = useState(false);
 
   // Video processing hook
   const {
@@ -58,16 +57,6 @@ function App() {
     setTechnicalIntensity,
     setCreativeIntensity,
   } = useDualLUT();
-
-  // Super Resolution hook
-  const {
-    state: srState,
-    loadModel: loadSRModel,
-    upscaleFrame,
-  } = useSuperResolution();
-
-  /* Removed duplicate upscaleEnabled */
-  const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
 
   // Timeline State
   const [currentTime, setCurrentTime] = useState(0);
@@ -140,8 +129,14 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [hasVideo, playPause, resetColorSettings, setCreativeIntensity]);
 
-  const handleVideoSelect = async (file: File) => {
-    await loadVideo(file);
+  const handleVideoSelect = async (file: File): Promise<boolean> => {
+    try {
+      await loadVideo(file);
+      return true;
+    } catch (error) {
+      console.error("Failed to load video:", error);
+      return false;
+    }
   };
 
   const handleExport = () => {
@@ -175,8 +170,6 @@ function App() {
             technicalIntensity={lutState.technicalIntensity}
             creativeLUTData={creativeLUTData}
             creativeIntensity={lutState.creativeIntensity}
-            livePreviewEnabled={livePreviewEnabled}
-            upscaleFrame={upscaleFrame}
           />
         ) : (
           <div className="z-[20] pointer-events-auto">
@@ -369,80 +362,7 @@ function App() {
             )}
 
             {toolbarView === 'magic' && (
-              <div className="space-y-4">
-                {/* AI Super Resolution */}
-                <div>
-                  <div className="section-header mb-2">AI SUPER RESOLUTION</div>
-                  <div className="text-xs text-white/40 mb-3">Upscale video with AI (2x)</div>
-
-                  {/* Model Status */}
-                  <div className="flex items-center gap-2 mb-3 p-2 rounded-lg bg-white/5">
-                    <div className={`w-2 h-2 rounded-full ${srState.isModelLoaded ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                    <span className="text-xs text-white/60">
-                      {srState.isModelLoaded ? 'Model Ready' : 'Model Not Loaded'}
-                    </span>
-                    {!srState.isModelLoaded && (
-                      <button
-                        onClick={() => loadSRModel()}
-                        className="ml-auto text-xs bg-[var(--accent)] text-black px-2 py-1 rounded"
-                      >
-                        Load Model
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Upscale Toggle */}
-                  <div className="flex items-center justify-between p-3 rounded-lg border border-white/10">
-                    <div>
-                      <div className="text-sm text-white">2x Upscale</div>
-                      <div className="text-xs text-white/40">720p → 1440p</div>
-                    </div>
-                    <button
-                      onClick={() => setUpscaleEnabled(!upscaleEnabled)}
-                      className={`w-12 h-6 rounded-full transition-colors ${upscaleEnabled ? 'bg-[var(--accent)]' : 'bg-white/20'}`}
-                    >
-                      <div className={`relative w-4 h-4 bg-white rounded-full transition-transform duration-200 ${upscaleEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
-
-                  {/* Live Preview Toggle */}
-                  {upscaleEnabled && (
-                    <div className="flex items-center justify-between p-3 mt-2 rounded-lg border border-white/10 bg-white/5">
-                      <div>
-                        <div className="text-sm text-white">Live Preview</div>
-                        <div className="text-xs text-white/40">Real-time AI (Low FPS)</div>
-                      </div>
-                      <button
-                        onClick={() => setLivePreviewEnabled(!livePreviewEnabled)}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${livePreviewEnabled ? 'bg-[var(--accent)]' : 'bg-white/20'}`}
-                      >
-                        <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-200 ${livePreviewEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                      </button>
-                    </div>
-                  )}
-
-                  {upscaleEnabled && (
-                    <div className="mt-2 p-2 rounded-lg bg-purple-500/10 border border-purple-500/30">
-                      <div className="text-xs text-purple-300">⚡ AI upscale will be applied during export</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Enhancement Presets */}
-                <div>
-                  <div className="section-header mb-2">QUICK ENHANCE</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button className="p-3 rounded-lg border border-white/10 text-left hover:bg-white/5 transition-colors">
-                      <div className="text-sm text-white">Auto Fix</div>
-                      <div className="text-xs text-white/40">Auto color & exposure</div>
-                    </button>
-                    <button className="p-3 rounded-lg border border-white/10 text-left hover:bg-white/5 transition-colors">
-                      <div className="text-sm text-white">Denoise</div>
-                      <div className="text-xs text-white/40">Reduce noise</div>
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <PhotoUpscaler />
             )}
           </ControlDeck>
 
@@ -465,9 +385,7 @@ function App() {
           videoElement={videoElement}
           colorSettings={colorSettings}
           lutData={creativeLUTData}
-          lutIntensity={lutState.creativeIntensity}
-          upscaleEnabled={upscaleEnabled}
-          upscaleFrame={upscaleFrame}
+          lutIntensity={100} // Default
           onClose={() => setShowExportModal(false)}
         />
       )}

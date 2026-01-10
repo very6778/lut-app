@@ -11,8 +11,6 @@ interface ExportModalProps {
     colorSettings: ColorSettings;
     lutData: LUTData | null;
     lutIntensity: number;
-    upscaleEnabled: boolean;
-    upscaleFrame?: (frame: ImageData) => Promise<ImageData | null>;
     onClose: () => void;
 }
 
@@ -30,8 +28,6 @@ export function ExportModal({
     colorSettings,
     lutData,
     lutIntensity,
-    upscaleEnabled,
-    upscaleFrame,
     onClose,
 }: ExportModalProps) {
     const [quality, setQuality] = useState<Quality>('high');
@@ -49,10 +45,8 @@ export function ExportModal({
             bitrate: quality === 'low' ? 5_000_000 : quality === 'medium' ? 10_000_000 : 20_000_000,
         };
 
-        const upscale = upscaleEnabled && upscaleFrame ? { enabled: true, fn: upscaleFrame } : undefined;
-
-        await startExport(video, videoElement, settings, colorSettings, lutData, lutIntensity, fps, upscale);
-    }, [videoElement, video, quality, fps, colorSettings, lutData, lutIntensity, startExport, upscaleEnabled, upscaleFrame]);
+        await startExport(video, videoElement, settings, colorSettings, lutData, lutIntensity, fps);
+    }, [videoElement, video, quality, fps, colorSettings, lutData, lutIntensity, startExport]);
 
     const isExporting = progress.status === 'encoding' || progress.status === 'muxing';
     const isComplete = progress.status === 'complete';
